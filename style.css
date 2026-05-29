@@ -1,0 +1,266 @@
+/* ==============================
+   style.css — 스마트 자리 바꾸기
+   ============================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  user-select: none;
+}
+
+/* ─── 슬롯 애니메이션 ─── */
+.slot-roll {
+  animation: slotRoll 0.08s linear infinite;
+}
+@keyframes slotRoll {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  50%  { transform: translateY(0);     opacity: 1; }
+  100% { transform: translateY(100%);  opacity: 0; }
+}
+
+/* ─── 자리 팝 ─── */
+.seat-pop {
+  animation: seatPop 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+@keyframes seatPop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* ─── 쉐이크 ─── */
+.shake {
+  animation: shake 0.1s linear infinite;
+}
+@keyframes shake {
+  0%, 100% { transform: translate(0); }
+  25%       { transform: translate(-2px, 1px); }
+  75%       { transform: translate(2px, -1px); }
+}
+
+/* ─── ON/OFF 토글 ─── */
+.toggle-switch {
+  width: 50px;
+  height: 24px;
+  background: #ef4444;
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.3s ease;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.toggle-switch.active { background: #22c55e; }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  left: 2px;
+  transition: left 0.3s ease;
+}
+.toggle-switch.active::after { left: 28px; }
+
+/* ─── 성별 스위치 ─── */
+.gender-switch {
+  width: 54px;
+  height: 24px;
+  background: #3b82f6;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  border: none;
+  padding: 0;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.gender-switch.female { background: #ec4899; }
+.gender-switch::after { content: '남'; position: absolute; right: 6px; }
+.gender-switch.female::after { content: '여'; left: 6px; }
+.gender-switch-thumb {
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 4px;
+  position: absolute;
+  left: 3px;
+  transition: left 0.2s ease;
+}
+.gender-switch.female .gender-switch-thumb { left: 33px; }
+
+/* ─── 그리드 셀 ─── */
+#grid {
+  user-select: none;
+}
+.grid-cell {
+  position: relative;
+  transition: all 0.3s ease;
+  min-height: 60px;
+}
+.seat-number {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  font-weight: 900;
+  color: #6366f1;
+  pointer-events: none;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+/* ─── 이번 회차 당첨 자리 (핑크) ─── */
+.picked-cell-current {
+  background-color: #ec4899 !important;
+  border-color: #db2777 !important;
+  border-width: 3px !important;
+  box-shadow: 0 10px 15px -3px rgba(236, 72, 153, 0.4);
+  z-index: 30;
+}
+.picked-cell-current span,
+.picked-cell-current text {
+  color: #ffffff !important;
+}
+
+/* ─── 이전 회차 당첨 자리 (회색) ─── */
+.picked-cell-previous {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  border-width: 2px !important;
+  opacity: 0.8;
+  z-index: 25;
+}
+.picked-cell-previous span {
+  color: #64748b !important;
+}
+
+/* ─── 모둠보기 OFF 시 모둠 관련 요소 숨김 ─── */
+body.group-view-off .group-label,
+body.group-view-off .group-number-label {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────
+   ⚙️ 설정 메뉴 카드형 UI
+   ───────────────────────────────────── */
+.settings-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.settings-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #334155;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+.settings-section-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 4px 0 12px;
+}
+
+/* ─── 비밀번호 변경 입력 ─── */
+.pw-input {
+  width: 100%;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: 'Noto Sans KR', sans-serif;
+  margin-bottom: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.pw-input:focus {
+  border-color: #6366f1;
+}
+
+/* ─── 탭 활성 상태 ─── */
+.tab-btn.active-tab {
+  border-bottom: 3px solid #6366f1;
+  color: #6366f1;
+  background: #f8faff;
+}
+
+/* ─────────────────────────────────────
+   🖨️ 프린트 스타일
+   ───────────────────────────────────── */
+@media print {
+  /* 화면 요소 모두 숨김 */
+  body > .flex,
+  body > div:not(#printArea) {
+    display: none !important;
+  }
+
+  #printArea {
+    display: block !important;
+  }
+
+  .print-board {
+    background: #166534;
+    color: white;
+    text-align: center;
+    font-size: 22px;
+    font-weight: 900;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    letter-spacing: 0.2em;
+  }
+
+  #printGrid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 4px;
+    page-break-inside: avoid;
+  }
+
+  .print-cell {
+    border: 1.5px solid #94a3b8;
+    border-radius: 6px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #1e293b;
+    text-align: center;
+    background: #fff;
+    padding: 4px;
+  }
+
+  .print-cell.disabled {
+    background: #f1f5f9;
+    color: #94a3b8;
+  }
+
+  .print-cell.group-colored {
+    border-width: 2.5px;
+  }
+
+  /* 버튼, 사이드바, 더보기 등 모두 숨김 */
+  button, .tab-btn, #sidebar, #moreMenuDropdown {
+    display: none !important;
+  }
+}

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스마트 자리 바꾸기</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="h-full bg-slate-100 overflow-hidden">
+
+<div class="flex h-full w-full">
+
+  <!-- ===== 좌측 메인 영역 ===== -->
+  <div class="w-[70%] flex flex-col p-4 gap-3 relative">
+
+    <!-- 우상단 버튼 영역 -->
+    <div class="absolute top-4 right-4 z-50 flex gap-2">
+      <!-- ☰ 더보기 메뉴 버튼 -->
+      <div class="relative">
+        <button onclick="toggleMoreMenu()" id="btnMoreMenu"
+          class="px-3 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded-lg font-bold text-sm transition">
+          ☰ 더보기
+        </button>
+        <!-- 더보기 드롭다운 -->
+        <div id="moreMenuDropdown"
+          class="hidden absolute right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[140px] overflow-hidden">
+          <button onclick="toggleGroupView(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            <span id="groupViewIcon">👁️</span>
+            <span id="groupViewLabel">모둠보기 ON</span>
+          </button>
+          <button onclick="resetGrid(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            ↺ 자리 비우기
+          </button>
+          <button onclick="printSeats(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            🖨️ 프린트
+          </button>
+        </div>
+      </div>
+      <!-- 설정 버튼 (구 "메뉴" → "설정") -->
+      <button onclick="toggleSidebar()"
+        class="px-3 py-2 bg-indigo-400 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm transition">
+        설정
+      </button>
+    </div>
+
+    <!-- 칠판 -->
+    <div class="bg-green-800 rounded-lg py-3 text-center shadow-inner border-4 border-yellow-900 relative">
+      <span class="text-white text-2xl font-bold tracking-widest font-sans">칠 판</span>
+    </div>
+
+    <!-- 자리 그리드 -->
+    <div id="grid"
+      class="flex-1 grid grid-cols-8 grid-rows-5 gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
+    </div>
+
+    <!-- 메인 버튼 영역 (자리바꾸기 / 뽑기메뉴만 크게 유지) -->
+    <div class="flex justify-center gap-4 pb-2">
+      <button id="btnOpenPicker" onclick="openPickerTab()"
+        class="px-6 py-3 bg-amber-400 hover:bg-amber-500 text-white font-bold rounded-xl shadow-lg text-lg transition">
+        📢 뽑기 메뉴
+      </button>
+      <button id="btnShuffle" onclick="startShuffle()"
+        class="px-8 py-3 bg-indigo-400 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg text-lg transition">
+        🎲 자리 바꾸기
+      </button>
+    </div>
+
+  </div><!-- /좌측 -->
+
+  <!-- ===== 우측 사이드바 ===== -->
+  <div id="sidebar"
+    class="w-[30%] bg-white border-l border-slate-200 flex flex-col transition-transform duration-300 fixed right-0 top-0 h-full z-40"
+    style="transform: translateX(100%);">
+
+    <!-- 탭 순서: 명단관리 → 모둠설정 → 뽑기메뉴 → ⚙️ -->
+    <div class="flex border-b">
+      <button onclick="showTab('roster')"  class="tab-btn flex-1 py-3 text-center text-lg hover:bg-slate-50 transition" data-tab="roster">👤<br><span class="text-xs font-bold">명단관리</span></button>
+      <button onclick="showTab('group')"   class="tab-btn flex-1 py-3 text-center text-lg hover:bg-slate-50 transition" data-tab="group">👥<br><span class="text-xs font-bold">모둠설정</span></button>
+      <button onclick="showTab('picker')"  class="tab-btn flex-1 py-3 text-center text-lg hover:bg-slate-50 transition" data-tab="picker">📢<br><span class="text-xs font-bold">뽑기</span></button>
+      <button onclick="openSettingsWithPassword()" class="tab-btn flex-1 py-3 text-center text-lg hover:bg-slate-50 transition" data-tab="settings">⚙️<br><span class="text-xs font-bold">설정</span></button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-3" id="sideContent"></div>
+  </div>
+
+</div><!-- /flex -->
+
+<!-- 프린트 전용 영역 (평소에는 숨김) -->
+<div id="printArea" class="hidden">
+  <div class="print-board">칠 판</div>
+  <div id="printGrid"></div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
