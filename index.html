@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ko" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- [3] 사이트 이름 변경 -->
+<title>Classton — 스마트 학급 운영툴</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="h-full bg-slate-100 overflow-hidden">
+
+<div class="flex h-full w-full">
+
+  <!-- ===== 좌측 메인 영역 ===== -->
+  <div class="w-[70%] flex flex-col p-4 gap-3 relative">
+
+    <!-- 우상단: 설정 버튼만 -->
+    <div class="absolute top-4 right-4 z-50 flex gap-2 items-center">
+      <button onclick="toggleSidebar()"
+        class="px-3 py-2 bg-indigo-400 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm transition flex items-center gap-1">
+        ⚙️ 설정
+      </button>
+    </div>
+
+    <!-- 칠판 -->
+    <div class="bg-green-800 rounded-lg py-3 text-center shadow-inner border-4 border-yellow-900 relative flex-shrink-0">
+      <span class="text-white text-2xl font-bold tracking-widest font-sans">칠 판</span>
+    </div>
+
+    <!-- 자리 그리드 (원래 구조로 복원) -->
+    <div id="grid"
+      class="flex-1 grid grid-cols-8 grid-rows-5 gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
+    </div>
+
+    <!-- [2] 메인 버튼 행 — 하단에서 약간 위로 -->
+    <div class="flex justify-center items-stretch gap-2 main-btn-row">
+
+      <!-- 기록하기 버튼 — 다했어요 활성 시에만 표시, 다했어요 버튼 왼쪽 -->
+      <button id="btnSaveHistory" onclick="saveHistory()"
+        style="display:none;"
+        class="main-btn-daha px-3 py-0 bg-violet-500 hover:bg-violet-600 text-white font-bold rounded-xl shadow-lg transition flex flex-col items-center justify-center">
+        <span class="text-lg leading-none">📝</span>
+        <span class="text-xs mt-0.5 leading-tight">기록하기</span>
+      </button>
+
+      <!-- 다했어요 (개인) -->
+      <button id="btnDahaesseoMain" onclick="toggleDahaesseo()"
+        class="main-btn-daha px-3 py-0 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg transition flex flex-col items-center justify-center">
+        <span class="text-lg leading-none">👤</span>
+        <span class="text-xs mt-0.5 leading-tight">다했어요</span>
+      </button>
+
+      <!-- 다했어요 (모둠) -->
+      <button id="btnDahaesseoGroupMain" onclick="toggleDahaesseoGroup()"
+        class="main-btn-daha px-3 py-0 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-xl shadow-lg transition flex flex-col items-center justify-center">
+        <span class="text-lg leading-none">👥</span>
+        <span class="text-xs mt-0.5 leading-tight text-center">다했어요<br>(모둠)</span>
+      </button>
+
+      <!-- 뽑기 메뉴 -->
+      <button id="btnOpenPicker" onclick="openPickerTab()"
+        class="px-6 bg-amber-400 hover:bg-amber-500 text-white font-bold rounded-xl shadow-lg text-lg transition flex items-center justify-center">
+        📢 뽑기 메뉴
+      </button>
+
+      <!-- 자리 바꾸기 -->
+      <button id="btnShuffle" onclick="startShuffle()"
+        class="px-8 bg-indigo-400 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg text-lg transition flex items-center justify-center">
+        🎲 자리 바꾸기
+      </button>
+
+      <!-- ☰ 더보기 (드롭다운 위쪽 방향) -->
+      <div class="relative flex items-stretch">
+        <button onclick="toggleMoreMenu()" id="btnMoreMenu"
+          class="px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-xl font-bold text-sm transition shadow-lg flex items-center">
+          ☰
+        </button>
+        <div id="moreMenuDropdown"
+          class="hidden absolute right-0 bottom-12 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[160px] overflow-hidden">
+          <!-- 모둠보기 -->
+          <button onclick="toggleGroupView(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            <span id="groupViewIcon">🙈</span>
+            <span id="groupViewLabel">모둠보기 OFF</span>
+          </button>
+          <!-- 1인1역 보기 ON/OFF -->
+          <button onclick="toggleRoleView(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            <span id="roleViewIcon">🙈</span>
+            <span id="roleViewLabel">1인1역 보기 OFF</span>
+          </button>
+          <!-- 자리 초기화 -->
+          <button onclick="resetGrid(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            ↺ 자리 초기화
+          </button>
+          <!-- 프린트 -->
+          <button onclick="printSeats(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            🖨️ 프린트
+          </button>
+          <div class="border-t border-slate-100"></div>
+          <!-- 독립 타이머 -->
+          <button onclick="toggleFreeTimer(); closeMoreMenu()"
+            class="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition">
+            ⏱️ <span id="freeTimerMenuLabel">타이머</span>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /버튼 행 -->
+
+    <!-- [3] 하단 푸터 -->
+    <div class="main-footer">
+      Classton - 스마트 학급 운영툴 &nbsp;|&nbsp; Copyright by deeplake
+    </div>
+
+  </div><!-- /좌측 -->
+
+  <!-- ===== 우측 사이드바 ===== -->
+  <div id="sidebar"
+    class="w-[30%] bg-white border-l border-slate-200 flex flex-col transition-transform duration-300 fixed right-0 top-0 h-full z-40"
+    style="transform: translateX(100%);">
+    <!-- 탭 순서: 명단 → 모둠 → 뽑기 → 기록 → 🔒보안 -->
+    <div class="flex border-b">
+      <button onclick="showTab('roster')"  class="tab-btn flex-1 py-2 text-center hover:bg-slate-50 transition" data-tab="roster">👤<br><span class="text-xs font-bold">명단</span></button>
+      <button onclick="showTab('group')"   class="tab-btn flex-1 py-2 text-center hover:bg-slate-50 transition" data-tab="group">👥<br><span class="text-xs font-bold">모둠</span></button>
+      <button onclick="showTab('picker')"  class="tab-btn flex-1 py-2 text-center hover:bg-slate-50 transition" data-tab="picker">📢<br><span class="text-xs font-bold">뽑기</span></button>
+      <button onclick="showTab('history')" class="tab-btn flex-1 py-2 text-center hover:bg-slate-50 transition" data-tab="history">📋<br><span class="text-xs font-bold">기록</span></button>
+      <!-- [1] 설정창 내부 5번째 탭: 보안(자물쇠)으로 변경 -->
+      <button onclick="openSettingsWithPassword()" class="tab-btn flex-1 py-2 text-center hover:bg-slate-50 transition" data-tab="settings">🔒<br><span class="text-xs font-bold">보안</span></button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-3" id="sideContent"></div>
+  </div>
+
+</div><!-- /flex -->
+
+<!-- ===== [5차] 1인1역 등록 팝업 ===== -->
+<div id="rolePopupOverlay" class="role-popup-overlay" style="display:none;">
+  <div class="role-popup-card">
+    <!-- 헤더 -->
+    <div class="role-popup-header">
+      <span class="role-popup-title">우리 반 1인1역</span>
+      <button onclick="closeRolePopup()" class="role-popup-close">✕</button>
+    </div>
+    <!-- 스크롤 가능한 본문 -->
+    <div class="role-popup-body" id="rolePopupContent">
+      <!-- JS로 렌더링 -->
+    </div>
+    <!-- [6] 하단 버튼: 저장 / 초기화 / 취소 / 프린트 -->
+    <div class="role-popup-footer">
+      <button onclick="saveRoles()"        class="role-save-btn">💾 저장</button>
+      <button onclick="resetAllRoles()"    class="role-reset-btn">🗑 초기화</button>
+      <button onclick="closeRolePopup()"   class="role-cancel-btn">취소</button>
+      <button onclick="printRoleTable()"   class="role-print-btn">🖨️ 프린트</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== [15~20] 다했어요 전용 타이머 패널 ===== -->
+<div id="timerPanel" class="timer-panel hidden">
+  <div class="timer-panel-inner">
+    <div class="timer-label">⏱ 타이머</div>
+    <div class="timer-circle-wrap">
+      <svg class="timer-svg" viewBox="0 0 120 120">
+        <circle class="timer-track" cx="60" cy="60" r="52"/>
+        <circle id="timerArc" class="timer-arc" cx="60" cy="60" r="52"
+          stroke-dasharray="326.7" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-display">
+        <span id="timerDigits" class="timer-digits">00:00</span>
+      </div>
+    </div>
+    <div class="timer-add-row">
+      <button onclick="timerAddTime(600,'timerPanel')" class="timer-add-btn">+10분</button>
+      <button onclick="timerAddTime(300,'timerPanel')"  class="timer-add-btn">+5분</button>
+      <button onclick="timerAddTime(60,'timerPanel')"   class="timer-add-btn">+1분</button>
+    </div>
+    <div class="timer-ctrl-row">
+      <button onclick="timerStart('timerPanel')"  class="timer-ctrl-btn timer-ctrl-start"  title="시작">▶</button>
+      <button onclick="timerPause('timerPanel')"  class="timer-ctrl-btn timer-ctrl-pause"  title="일시정지">⏸</button>
+      <button onclick="timerReset('timerPanel')"  class="timer-ctrl-btn timer-ctrl-reset"  title="초기화">↺</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 독립 타이머 패널 ===== -->
+<div id="timerPanelFree" class="timer-panel timer-panel-free hidden">
+  <div class="timer-panel-inner">
+    <!-- [5] 닫기 버튼 추가 -->
+    <div class="timer-panel-topbar">
+      <span class="timer-label">⏱ 타이머</span>
+      <button onclick="closeFreeTimer()" class="timer-close-btn" title="닫기">✕</button>
+    </div>
+    <div class="timer-circle-wrap">
+      <svg class="timer-svg" viewBox="0 0 120 120">
+        <circle class="timer-track" cx="60" cy="60" r="52"/>
+        <circle id="timerArcFree" class="timer-arc" cx="60" cy="60" r="52"
+          stroke-dasharray="326.7" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-display">
+        <span id="timerDigitsFree" class="timer-digits">00:00</span>
+      </div>
+    </div>
+    <div class="timer-add-row">
+      <button onclick="timerAddTime(600,'timerPanelFree')" class="timer-add-btn">+10분</button>
+      <button onclick="timerAddTime(300,'timerPanelFree')"  class="timer-add-btn">+5분</button>
+      <button onclick="timerAddTime(60,'timerPanelFree')"   class="timer-add-btn">+1분</button>
+    </div>
+    <div class="timer-ctrl-row">
+      <button onclick="timerStart('timerPanelFree')"  class="timer-ctrl-btn timer-ctrl-start"  title="시작">▶</button>
+      <button onclick="timerPause('timerPanelFree')"  class="timer-ctrl-btn timer-ctrl-pause"  title="일시정지">⏸</button>
+      <button onclick="timerReset('timerPanelFree')"  class="timer-ctrl-btn timer-ctrl-reset"  title="초기화">↺</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 다했어요 완료 오버레이 ===== -->
+<div id="dahaesseoOverlay"
+  style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+         z-index:9999; align-items:center; justify-content:center;">
+  <div class="dahaesseo-popup">
+    <div class="dahaesseo-emoji">🎉</div>
+    <div class="dahaesseo-title">다 했어요!</div>
+    <div class="dahaesseo-sub" id="dahaesseoSubText">모든 학생이 완료했습니다 👏</div>
+    <button onclick="closeDahaesseoOverlay()" class="dahaesseo-btn">확인</button>
+  </div>
+</div>
+
+<!-- 프린트 전용 영역 -->
+<div id="printArea" class="hidden">
+  <div class="print-board">칠 판</div>
+  <div id="printGrid"></div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
