@@ -38,7 +38,7 @@ CHANGELOG.md
 
 ## 배포 주소
 
-(여기에 GitHub Pages 주소 입력)
+(https://github.com/wiind-lab/seat-change-app/tree/main)
 
 ---
 
