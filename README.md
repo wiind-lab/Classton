@@ -51,3 +51,5 @@ deeplake
 - [프로젝트 현황](PROJECT_STATUS.md)
 - [개발 로드맵](ROADMAP.md)
 - [업데이트 기록](CHANGELOG.md)
+
+현재 버전 : v6 개발 진행 중
