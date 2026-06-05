@@ -2876,10 +2876,9 @@ function submitSheetsFeedback() {
 
   fetch(_SHEETS_ENDPOINT, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    mode:    'no-cors',
     body:    JSON.stringify({ type: _currentFbType, title, message, timestamp: Date.now(), version: 'v6-I' }),
   })
-  .then(r => r.json())
   .then(() => {
     setStatus('✅ 전송 완료! 소중한 의견 감사합니다.', '#16a34a');
     document.getElementById('fbTitle').value   = '';
