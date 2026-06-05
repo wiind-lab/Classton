@@ -12,8 +12,26 @@ let activeGroup = 0;
 let fixedSeats = {};
 let banned = [];
 let avoidPrevPair = false;
-let currentTab = 'roster';
+let currentTab  = 'roster';
+let currentMode = 'list';   /* [v6-G] 'list' | 'draw' */
+
+/* [v6-G] 방문자 카운트 */
+(function(){
+  try {
+    const key = 'seat_visitor_count';
+    const c = parseInt(localStorage.getItem(key) || '0') + 1;
+    localStorage.setItem(key, c);
+  } catch(e) {}
+})();
 let savedLayouts = [];
+
+/* ─── [6-A] 성별 배치 상태 ─── */
+let genderPanelOpen   = false;     // 확장 패널 열림 여부
+let genderZoneMode    = false;     // 남여 자리지정 모드 ON/OFF
+let genderZones       = Array(40).fill('');  // '' | 'M' | 'F' — 각 셀의 성별존
+let genderBrush       = 'M';       // 현재 선택된 브러시: 'M' | 'F' | ''(지우개)
+let sameGenderOn      = false;     // 같은 성별끼리 앉기 ON/OFF
+let _groupViewBeforeZone = null;   // [6-B.1] 성별존 진입 직전 groupViewOn 상태 저장
 
 /* ─── 뽑기 상태 ─── */
 let pickedSeatIndexes = [];
@@ -25,6 +43,7 @@ let lastPickAllCount = 1;
 let lastPickGroupCount = 1;
 let lastPickMaleCount = 0;
 let lastPickFemaleCount = 0;
+let lastPickGroupSize = 2;  /* [6-E] 한번에 다 뽑기 — 그룹 크기 */
 
 /* ─── UI 상태 ─── */
 let isDragging = false;
@@ -109,6 +128,9 @@ function loadFromStorage() {
   try { const r = localStorage.getItem('seat_role_rows'); if (r) roleRows = JSON.parse(r) || []; } catch(e) {}
   /* [5차-B] 역할 표시 ON/OFF 로드 */
   try { const rv = localStorage.getItem('seat_role_view_on'); if (rv !== null) roleViewOn = JSON.parse(rv); } catch(e) {}
+  /* [6-A] 성별존 / 같은성별앉기 로드 */
+  try { const gz = localStorage.getItem('seat_gender_zones'); if (gz) { const p = JSON.parse(gz); if (Array.isArray(p) && p.length === 40) genderZones = p; } } catch(e) {}
+  try { const sg = localStorage.getItem('seat_same_gender'); if (sg !== null) sameGenderOn = JSON.parse(sg); } catch(e) {}
 }
 
 function saveStudentsToStorage() {
@@ -119,6 +141,8 @@ function saveSettingsToStorage() {
   localStorage.setItem('seat_groups', JSON.stringify(groups));
   localStorage.setItem('seat_fixed_seats', JSON.stringify(fixedSeats));
   localStorage.setItem('seat_banned', JSON.stringify(banned));
+  /* [6-A] 성별존 저장 */
+  localStorage.setItem('seat_gender_zones', JSON.stringify(genderZones));
 }
 
 /* [5번] 비밀번호 localStorage 저장/로드 */
@@ -192,6 +216,20 @@ function renderGrid() {
 
     if (showGroupStyle) {
       cell.style.borderColor = groupColors[(cellGroupNum - 1) % 8];
+      cell.style.borderWidth = '3px';
+    }
+
+    /* [6-A] 성별존 테두리 — 다했어요·뽑기·모둠 강조 없을 때만, genderZoneMode OR sameGenderOn 시 표시 */
+    const cellGenderZone = genderZones[i];
+    const showGenderZone = cellGenderZone
+      && !inDahaesseo
+      && !inDahaesseoGroup
+      && !isCurrentPicked
+      && !isPreviousPicked
+      && !showGroupStyle;  /* 모둠 강조 시 성별존 테두리 숨김 */
+
+    if (showGenderZone) {
+      cell.style.borderColor = cellGenderZone === 'M' ? '#3b82f6' : '#ec4899';
       cell.style.borderWidth = '3px';
     }
 
@@ -322,6 +360,22 @@ function handleMouseDown(i, e) {
     return;
   }
 
+  /* [6-A] 성별 자리 지정 모드 */
+  if (genderZoneMode) {
+    if (!gridEnabled[i]) return; // 비활성 자리는 무시
+    if (genderBrush === '') {
+      // 지우개: 기존 지정 해제
+      genderZones[i] = '';
+    } else {
+      // 이미 같은 브러시로 지정된 경우 → 해제(토글)
+      genderZones[i] = genderZones[i] === genderBrush ? '' : genderBrush;
+    }
+    saveSettingsToStorage();
+    _renderGenderZoneBar();
+    renderGrid();
+    return;
+  }
+
   if (fixModeActive) {
     if (fixModeStudentIdx !== null) {
       fixedSeats[fixModeStudentIdx] = i;
@@ -345,6 +399,13 @@ function handleMouseDown(i, e) {
 }
 
 function handleMouseEnter(i, e) {
+  /* [6-A] 성별 지정 모드 드래그 페인팅 */
+  if (genderZoneMode && isDragging) {
+    if (!gridEnabled[i]) return;
+    genderZones[i] = genderBrush === '' ? '' : genderBrush;
+    renderGrid();
+    return;
+  }
   if (!isDragging || fixModeActive || dahaesseoMode || dahaesseoGroupMode) return;
   if (activeGroup > 0) groups.assignments[i] = startCellState;
   else gridEnabled[i] = startCellState;
@@ -369,6 +430,20 @@ function milkSVG(isCurrentPicked, isPreviousPicked) {
 function startShuffle() {
   if (students.length === 0) return;
   pickedSeatIndexes = [];
+
+  /* [6-A] 성별 초과 경고 — 초과 시 셔플 차단 */
+  const mStudents = students.filter(s => s.gender === 'M').length;
+  const fStudents = students.filter(s => s.gender === 'F').length;
+  const mZones    = genderZones.filter((z, i) => z === 'M' && gridEnabled[i]).length;
+  const fZones    = genderZones.filter((z, i) => z === 'F' && gridEnabled[i]).length;
+  if (mZones > mStudents) {
+    alert(`⚠️ 남학생 수보다 지정된 자리가 많습니다.\n남학생: ${mStudents}명 / 지정된 남학생 자리: ${mZones}칸`);
+    return;
+  }
+  if (fZones > fStudents) {
+    alert(`⚠️ 여학생 수보다 지정된 자리가 많습니다.\n여학생: ${fStudents}명 / 지정된 여학생 자리: ${fZones}칸`);
+    return;
+  }
 
   const btn = document.getElementById('btnShuffle');
   btn.disabled = true;
@@ -427,38 +502,239 @@ function doShuffle() {
     }
   }
 
-  for (let attempt = 0; attempt < 100; attempt++) {
-    let tempPool  = [...pool];
-    let tempSlots = [...slots];
-    let tempSeats = [...currentSeats];
-    shuffle(tempPool);
-    let valid = true;
+  /* [6-A] 성별존 또는 같은성별앉기 활성 여부 */
+  const hasGenderZones = genderZones.some((z, i) => z !== '' && gridEnabled[i]);
+  const useGenderLogic = hasGenderZones || sameGenderOn;
 
-    for (let k = 0; k < Math.min(tempPool.length, tempSlots.length); k++) {
-      tempSeats[tempSlots[k]] = tempPool[k];
-    }
+  if (!useGenderLogic) {
+    /* ── 기존 로직 완전 동일 (성별 기능 비활성 시) ── */
+    for (let attempt = 0; attempt < 100; attempt++) {
+      let tempPool  = [...pool];
+      let tempSlots = [...slots];
+      let tempSeats = [...currentSeats];
+      shuffle(tempPool);
+      let valid = true;
 
-    for (let [a, b] of banned) {
-      for (let i = 0; i < 40; i++) {
-        if (!tempSeats[i]) continue;
-        const col = i % 8;
-        if (tempSeats[i] === students[a]) {
-          if (col > 0 && tempSeats[i-1] === students[b]) valid = false;
-          if (col < 7 && tempSeats[i+1] === students[b]) valid = false;
+      for (let k = 0; k < Math.min(tempPool.length, tempSlots.length); k++) {
+        tempSeats[tempSlots[k]] = tempPool[k];
+      }
+
+      for (let [a, b] of banned) {
+        for (let i = 0; i < 40; i++) {
+          if (!tempSeats[i]) continue;
+          const col = i % 8;
+          if (tempSeats[i] === students[a]) {
+            if (col > 0 && tempSeats[i-1] === students[b]) valid = false;
+            if (col < 7 && tempSeats[i+1] === students[b]) valid = false;
+          }
         }
       }
-    }
 
-    if (avoidPrevPair && valid) {
-      for (let i = 0; i < 40; i++) {
-        if (!tempSeats[i]) continue;
-        const col = i % 8;
-        if (col > 0 && tempSeats[i-1] && prevPairs.has(tempSeats[i].name + '|' + tempSeats[i-1].name)) valid = false;
-        if (col < 7 && tempSeats[i+1] && prevPairs.has(tempSeats[i].name + '|' + tempSeats[i+1].name)) valid = false;
+      if (avoidPrevPair && valid) {
+        for (let i = 0; i < 40; i++) {
+          if (!tempSeats[i]) continue;
+          const col = i % 8;
+          if (col > 0 && tempSeats[i-1] && prevPairs.has(tempSeats[i].name + '|' + tempSeats[i-1].name)) valid = false;
+          if (col < 7 && tempSeats[i+1] && prevPairs.has(tempSeats[i].name + '|' + tempSeats[i+1].name)) valid = false;
+        }
+      }
+
+      if (valid || attempt === 99) { currentSeats = tempSeats; break; }
+    }
+  } else {
+    /* ── [6-A] 성별 배치 로직 ── */
+
+    /* 성별존이 지정된 슬롯과 미지정 슬롯 분리 */
+    const mZoneSlots = slots.filter(i => genderZones[i] === 'M');
+    const fZoneSlots = slots.filter(i => genderZones[i] === 'F');
+    const freeSlots  = slots.filter(i => genderZones[i] === '');
+
+    /* pool에서 성별 분리 */
+    let mPool = pool.filter(s => s.gender === 'M');
+    let fPool = pool.filter(s => s.gender === 'F');
+
+    /* 성별존 슬롯에 먼저 해당 성별 배치 */
+    shuffle(mPool);
+    shuffle(fPool);
+
+    const tempSeats = [...currentSeats];
+
+    /* 남학생존 → 남학생 배치 */
+    for (let k = 0; k < mZoneSlots.length && k < mPool.length; k++) {
+      tempSeats[mZoneSlots[k]] = mPool[k];
+    }
+    const mUsed = Math.min(mZoneSlots.length, mPool.length);
+
+    /* 여학생존 → 여학생 배치 */
+    for (let k = 0; k < fZoneSlots.length && k < fPool.length; k++) {
+      tempSeats[fZoneSlots[k]] = fPool[k];
+    }
+    const fUsed = Math.min(fZoneSlots.length, fPool.length);
+
+    /* 남은 학생: 존에 배치되지 않은 학생들 */
+    let remainM = mPool.slice(mUsed);
+    let remainF = fPool.slice(fUsed);
+    let remainAll = [...remainM, ...remainF];
+
+    /* 남은 슬롯 — 남은 학생 배치 (sameGenderOn이면 성별 묶음 정렬) */
+    let remSlots = [...freeSlots];
+
+    if (sameGenderOn && remainAll.length > 0 && remSlots.length > 0) {
+      /* [6-C] 탐욕적 인접 배정 — fullPairs 중심 구조
+         핵심 원리:
+           슬롯을 사전 분류하지 않고 배정 시점에 인접 여부를 동적으로 판단.
+           행 내 인접 슬롯이 있으면 fullPairs(동성 2인)를 즉시 배정,
+           없으면 단독 slotm에 단일 학생 배정.
+           → twoSlots/oneSlots 분류 폐기, surplus 구조 폐기.
+         보장: achievable_maxPair = min(maxPair, 물리적인접쌍수) 를 항상 달성. */
+
+      shuffle(remainM);
+      shuffle(remainF);
+
+      /* ── 1. fullPairs 생성 (동성 2인) + 홀수 잉여 처리 ── */
+      const mFullPairs = [];
+      for (let i = 0; i + 1 < remainM.length; i += 2) mFullPairs.push([remainM[i], remainM[i + 1]]);
+      const mHalf = remainM.length % 2 === 1 ? [remainM[remainM.length - 1]] : [];
+
+      const fFullPairs = [];
+      for (let i = 0; i + 1 < remainF.length; i += 2) fFullPairs.push([remainF[i], remainF[i + 1]]);
+      const fHalf = remainF.length % 2 === 1 ? [remainF[remainF.length - 1]] : [];
+
+      const fullPairs = [...mFullPairs, ...fFullPairs];
+      shuffle(fullPairs);                       // 페어 순서 랜덤화
+
+      const singles = [...mHalf, ...fHalf];
+      shuffle(singles);
+
+      /* ── 2. 탐욕적 인접 배정 ──
+              col%2===0 시작 인접쌍(짝꿍 카운트 기준)을 먼저 처리,
+              남은 인접쌍을 이후 처리.
+              배정 시점에 인접 여부를 동적으로 판단. */
+      remSlots.sort((a, b) => a - b);
+      const usedSlots = new Set();
+      let fpIdx = 0;
+
+      /* 1패스: col%2===0 시작 인접쌍 → fullPairs 우선 배정 (동성짝 카운트 직접 기여) */
+      for (let i = 0; i < remSlots.length; i++) {
+        const cur  = remSlots[i];
+        if (usedSlots.has(cur)) continue;
+        const col  = cur % 8;
+        const next = remSlots[i + 1];
+        const isColPairAdj = col % 2 === 0
+          && next !== undefined
+          && next === cur + 1
+          && Math.floor(cur / 8) === Math.floor(next / 8);
+
+        if (isColPairAdj && fpIdx < fullPairs.length) {
+          tempSeats[cur]  = fullPairs[fpIdx][0];
+          tempSeats[next] = fullPairs[fpIdx][1];
+          fpIdx++;
+          usedSlots.add(cur);
+          usedSlots.add(next);
+        }
+      }
+
+      /* 2패스: 남은 fullPairs → 나머지 행내 인접쌍에 배정 */
+      for (let i = 0; i < remSlots.length; i++) {
+        const cur  = remSlots[i];
+        if (usedSlots.has(cur)) continue;
+        const next = remSlots[i + 1];
+        const isAdjacent = next !== undefined
+          && next === cur + 1
+          && Math.floor(cur / 8) === Math.floor(next / 8)
+          && !usedSlots.has(next); // next가 이미 배정된 자리면 건너뜀
+
+        if (isAdjacent && fpIdx < fullPairs.length) {
+          tempSeats[cur]  = fullPairs[fpIdx][0];
+          tempSeats[next] = fullPairs[fpIdx][1];
+          fpIdx++;
+          usedSlots.add(cur);
+          usedSlots.add(next);
+        }
+      }
+
+      /* 3패스: 나머지 슬롯 → 남은 fullPairs.flat() + singles 배정 */
+      const rest = [...fullPairs.slice(fpIdx).flat(), ...singles];
+      shuffle(rest);
+      let ri = 0;
+      for (let i = 0; i < remSlots.length; i++) {
+        const s = remSlots[i];
+        if (!usedSlots.has(s) && ri < rest.length) {
+          tempSeats[s] = rest[ri++];
+        }
+      }
+
+    } else {
+      shuffle(remainAll);
+      for (let k = 0; k < remSlots.length && k < remainAll.length; k++) {
+        tempSeats[remSlots[k]] = remainAll[k];
       }
     }
 
-    if (valid || attempt === 99) { currentSeats = tempSeats; break; }
+    /* 짝꿍방지·직전짝 검증 (30회 시도, 마지막 시도는 강제 적용) */
+    let finalSeats = tempSeats;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      let valid = true;
+      for (let [a, b] of banned) {
+        for (let i = 0; i < 40; i++) {
+          if (!finalSeats[i]) continue;
+          const col = i % 8;
+          if (finalSeats[i] === students[a]) {
+            if (col > 0 && finalSeats[i-1] === students[b]) valid = false;
+            if (col < 7 && finalSeats[i+1] === students[b]) valid = false;
+          }
+        }
+      }
+      if (avoidPrevPair && valid) {
+        for (let i = 0; i < 40; i++) {
+          if (!finalSeats[i]) continue;
+          const col = i % 8;
+          if (col > 0 && finalSeats[i-1] && prevPairs.has(finalSeats[i].name + '|' + finalSeats[i-1].name)) valid = false;
+          if (col < 7 && finalSeats[i+1] && prevPairs.has(finalSeats[i].name + '|' + finalSeats[i+1].name)) valid = false;
+        }
+      }
+      if (valid || attempt === 29) break;
+      /* 재시도: fullPairs 재셔플 후 col%2 우선 2패스 재배정 */
+      shuffle(fullPairs);
+      fpIdx = 0;
+      for (const s of usedSlots) finalSeats[s] = null;
+      usedSlots.clear();
+      /* 1패스: col%2===0 우선 */
+      for (let i = 0; i < remSlots.length; i++) {
+        const cur = remSlots[i];
+        if (usedSlots.has(cur)) continue;
+        const col  = cur % 8;
+        const next = remSlots[i + 1];
+        const isColAdj = col % 2 === 0 && next !== undefined && next === cur + 1
+          && Math.floor(cur / 8) === Math.floor(next / 8);
+        if (isColAdj && fpIdx < fullPairs.length) {
+          finalSeats[cur] = fullPairs[fpIdx][0]; finalSeats[next] = fullPairs[fpIdx][1];
+          fpIdx++; usedSlots.add(cur); usedSlots.add(next);
+        }
+      }
+      /* 2패스: 나머지 인접 */
+      for (let i = 0; i < remSlots.length; i++) {
+        const cur = remSlots[i];
+        if (usedSlots.has(cur)) continue;
+        const next = remSlots[i + 1];
+        const isAdj = next !== undefined && next === cur + 1
+          && Math.floor(cur / 8) === Math.floor(next / 8)
+          && !usedSlots.has(next);
+        if (isAdj && fpIdx < fullPairs.length) {
+          finalSeats[cur] = fullPairs[fpIdx][0]; finalSeats[next] = fullPairs[fpIdx][1];
+          fpIdx++; usedSlots.add(cur); usedSlots.add(next);
+        }
+      }
+      /* 3패스: 나머지 */
+      const rest2 = [...fullPairs.slice(fpIdx).flat(), ...singles];
+      shuffle(rest2);
+      let ri2 = 0;
+      for (let i = 0; i < remSlots.length; i++) {
+        const s = remSlots[i];
+        if (!usedSlots.has(s) && ri2 < rest2.length) finalSeats[s] = rest2[ri2++];
+      }
+    }
+    currentSeats = finalSeats;
   }
 
   renderGrid();
@@ -502,20 +778,49 @@ function showTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
   const targetBtn = document.querySelector(`[data-tab="${tab}"]`);
   if (targetBtn) targetBtn.classList.add('active-tab');
+  /* [6-B] 모둠 탭이 아닌 탭으로 전환 시 activeGroup 초기화 — 타일 클릭 버그 방지 */
+  if (tab !== 'group') {
+    activeGroup = 0;
+  }
   renderSide();
 }
 
 function toggleSidebar() {
+  /* [v6-G] mode='list', toggle open/close */
   const sb = document.getElementById('sidebar');
   if (!sb) return;
   const hidden = sb.style.transform === 'translateX(100%)' || sb.style.transform === '';
-  sb.style.transform = hidden ? 'translateX(0)' : 'translateX(100%)';
+  if (hidden) {
+    sb.style.transform = 'translateX(0)';
+    currentMode = 'list';
+    showTab('roster');
+  } else {
+    if (currentMode === 'list') {
+      sb.style.transform = 'translateX(100%)';  /* 같은 mode → close */
+    } else {
+      currentMode = 'list';                      /* draw→list 전환 */
+      showTab('roster');
+    }
+  }
 }
 
 function openPickerTab() {
+  /* [v6-G] mode='draw', toggle open/close */
   const sb = document.getElementById('sidebar');
-  if (sb) sb.style.transform = 'translateX(0)';
-  showTab('picker');
+  if (!sb) return;
+  const hidden = sb.style.transform === 'translateX(100%)' || sb.style.transform === '';
+  if (hidden) {
+    sb.style.transform = 'translateX(0)';
+    currentMode = 'draw';
+    showTab('picker');
+  } else {
+    if (currentMode === 'draw') {
+      sb.style.transform = 'translateX(100%)';  /* 같은 mode → close */
+    } else {
+      currentMode = 'draw';                      /* list→draw 전환 */
+      showTab('picker');
+    }
+  }
 }
 
 /* [3번] 설정 탭 비밀번호 입력 */
@@ -526,6 +831,7 @@ function openSettingsWithPassword() {
   if (input === pw) {
     const sb = document.getElementById('sidebar');
     if (sb) sb.style.transform = 'translateX(0)';
+    currentMode = 'list'; /* [v6-G] */
     showTab('settings');
   } else {
     alert('비밀번호가 올바르지 않습니다.');
@@ -545,19 +851,13 @@ function toggleGroupView() {
 }
 
 function updateGroupViewButton() {
-  const icon  = document.getElementById('groupViewIcon');
-  const label = document.getElementById('groupViewLabel');
-  if (!icon || !label) return;
-  /* 버튼은 "누르면 실행될 동작"을 표시
-     groupViewOn=true  → 현재 ON, 누르면 OFF됨 → "모둠보기OFF" 표시
-     groupViewOn=false → 현재 OFF, 누르면 ON됨 → "모둠보기ON"  표시 */
-  if (groupViewOn) {
-    icon.textContent  = '🙈';
-    label.textContent = '모둠보기 OFF';
-  } else {
-    icon.textContent  = '👁️';
-    label.textContent = '모둠보기 ON';
-  }
+  /* [UI통합] 토글 스위치 active 클래스로 ON/OFF 표현
+     groupViewOn=true  → 스위치 활성(우측)
+     groupViewOn=false → 스위치 비활성(좌측) */
+  const sw = document.getElementById('groupViewSwitch');
+  if (!sw) return;
+  sw.classList.toggle('active', groupViewOn);
+  _updateStatusBadges();
 }
 
 /* ══════════════════════════════════
@@ -571,19 +871,13 @@ function toggleRoleView() {
 }
 
 function updateRoleViewButton() {
-  const icon  = document.getElementById('roleViewIcon');
-  const label = document.getElementById('roleViewLabel');
-  if (!icon || !label) return;
-  /* 버튼 = "누르면 실행될 동작" 표시
-     현재 ON → "1인1역 보기 OFF" (누르면 OFF)
-     현재 OFF → "1인1역 보기 ON" (누르면 ON) */
-  if (roleViewOn) {
-    icon.textContent  = '🙈';
-    label.textContent = '1인1역 보기 OFF';
-  } else {
-    icon.textContent  = '👁️';
-    label.textContent = '1인1역 보기 ON';
-  }
+  /* [UI통합] 토글 스위치 active 클래스로 ON/OFF 표현
+     roleViewOn=true  → 스위치 활성(우측)
+     roleViewOn=false → 스위치 비활성(좌측) */
+  const sw = document.getElementById('roleViewSwitch');
+  if (!sw) return;
+  sw.classList.toggle('active', roleViewOn);
+  _updateStatusBadges();
 }
 
 /* ══════════════════════════════════
@@ -868,6 +1162,14 @@ function renderHistory(c) {
               `<span class="rank-chip">${idx+1}. ${rec.mode === 'group' ? item+'모둠' : item}</span>`
             ).join('')}${rec.order.length > 3 ? `<span class="text-slate-400 text-xs">+${rec.order.length - 3}명</span>` : ''}
           </div>
+          <!-- [6-B] 목록 카드 삭제 버튼 — stopPropagation으로 카드 클릭과 충돌 방지 -->
+          <div class="flex justify-end mt-1.5">
+            <button
+              onclick="event.stopPropagation(); deleteHistoryFromList(${rec.id})"
+              class="history-card-del-btn" title="삭제">
+              🗑️
+            </button>
+          </div>
         </div>
       `).join('')}
     </div>`;
@@ -927,6 +1229,15 @@ function deleteHistory(id) {
   dahaesseoHistories = dahaesseoHistories.filter(r => r.id !== id);
   saveDahaHistoriesToStorage();
   showTab('history');
+}
+
+/* [6-B] 목록 화면에서 바로 삭제 — 상세 진입 없이 목록 갱신 */
+function deleteHistoryFromList(id) {
+  if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+  dahaesseoHistories = dahaesseoHistories.filter(r => r.id !== id);
+  saveDahaHistoriesToStorage();
+  const c = document.getElementById('sideContent');
+  if (c) renderHistory(c);
 }
 
 /* ══════════════════════════════════
@@ -1342,6 +1653,8 @@ function renderSide() {
   if (elGrp)    lastPickGroupCount  = parseInt(elGrp.value)    || 1;
   if (elMale)   lastPickMaleCount   = parseInt(elMale.value)   || 0;
   if (elFemale) lastPickFemaleCount = parseInt(elFemale.value) || 0;
+  const elGS = document.getElementById('pickGroupSize');
+  if (elGS) lastPickGroupSize = parseInt(elGS.value) || 2;
 
   if      (currentTab === 'roster')   renderRoster(c);
   else if (currentTab === 'group')    renderGroup(c);
@@ -1357,7 +1670,7 @@ function renderRoster(c) {
   c.innerHTML = `
     <textarea id="rosterInput"
       class="w-full h-24 border rounded-lg p-2 text-sm mb-2"
-      placeholder="이름을 줄바꿈으로 입력&#10;(우유급식: 이름 뒤에 탭+O)"></textarea>
+      placeholder="예) 홍길동, 서길동, 정길동, 김길동...&#10;(엑셀에서 이름이 적힌 행을 드래그하여 복사/붙여넣기 가능)"></textarea>
     <div class="flex gap-1 mb-3">
       <button onclick="loadRoster(false)" class="flex-1 py-2 bg-emerald-400 text-white rounded-lg font-bold text-xs hover:bg-emerald-500">명단 등록</button>
       <button onclick="loadRoster(true)"  class="flex-1 py-2 bg-sky-400    text-white rounded-lg font-bold text-xs hover:bg-sky-500">명단 추가</button>
@@ -1375,7 +1688,12 @@ function renderRoster(c) {
       ${students.map((s, i) => `
         <tr class="hover:bg-slate-50">
           <td class="p-1 border text-center text-slate-400">${i + 1}</td>
-          <td class="p-1 border font-medium">${s ? s.name : ''}${s && s.role ? `<span class="role-tag">${s.role}</span>` : ''}</td>
+          <td class="p-1 border font-medium">
+            <div class="flex items-center justify-between gap-1">
+              <span>${s ? s.name : ''}</span>
+              ${s && s.role ? `<span class="role-tag">${s.role}</span>` : ''}
+            </div>
+          </td>
           <td class="p-1 border text-center">
             <button class="gender-switch ${s && s.gender === 'F' ? 'female' : ''}" onclick="toggleGender(${i})">
               <span class="gender-switch-thumb"></span>
@@ -1427,6 +1745,12 @@ function removeStudent(i) { students.splice(i, 1); delete fixedSeats[i]; saveStu
    모둠 설정 탭
 ══════════════════════════════════ */
 function renderGroup(c) {
+  /* [6-B] 모둠설정 진입 시 모둠보기 OFF면 자동 ON */
+  if (!groupViewOn) {
+    groupViewOn = true;
+    updateGroupViewButton();
+    renderGrid();
+  }
   c.innerHTML = `
     <div class="flex flex-col gap-2 mb-4 border-b pb-3">
       <div class="flex items-center gap-2">
@@ -1577,6 +1901,12 @@ function renderSettings(c) {
         ⚠️ 전체 데이터 초기화
       </button>
     </div>`;
+
+  /* [v6-I] Google Sheets 피드백 센터 */
+  const sheetsArea = document.createElement('div');
+  sheetsArea.id = 'sheetsFeedbackArea';
+  c.appendChild(sheetsArea);
+  renderSheetsFeedback(sheetsArea);
 }
 
 /* [5번] 비밀번호 변경 */
@@ -1723,6 +2053,22 @@ function renderPickerMenu(c) {
           class="w-full mt-1 py-1.5 bg-rose-400 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow transition">
           ❌ 뽑기 초기화
         </button>
+      </div>
+
+      <!-- 한번에 다 뽑기 -->
+      <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 shadow-sm">
+        <h4 class="font-bold text-sm text-slate-800 mb-2">🎲 한번에 다 뽑기</h4>
+        <div class="flex items-center gap-2 mb-3">
+          <input type="number" id="pickGroupSize"
+            value="${lastPickGroupSize}" min="1" max="${Math.max(1, students.length)}"
+            class="w-16 border rounded p-1 text-center font-bold">
+          <span class="text-xs font-medium text-slate-600">명씩 묶어서 뽑기</span>
+          <button onclick="openPickAllPairs()"
+            class="ml-auto px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shadow transition">
+            뽑기
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-400">마지막 조는 남은 인원 그대로 포함됩니다.</p>
       </div>
 
       <!-- 학급 전체 뽑기 -->
@@ -1901,6 +2247,88 @@ function pickFromGender() {
 }
 
 /* ══════════════════════════════════
+   [6-E] 한번에 다 뽑기 — 전체 2인 1조 자동 배정
+══════════════════════════════════ */
+
+let _pickAllPairsResult = [];
+
+function openPickAllPairs() {
+  const seated = currentSeats.filter(Boolean);
+  if (seated.length === 0) {
+    return alert('배치된 명단이 없습니다. 자리 바꾸기를 먼저 해주세요.');
+  }
+  const gs = document.getElementById('pickGroupSize');
+  if (gs) lastPickGroupSize = Math.max(1, parseInt(gs.value) || 2);
+  _pickAllPairsResult = _buildPairs(seated.map(s => s.name), lastPickGroupSize);
+  _renderPickAllPairs();
+  document.getElementById('pickAllPairsOverlay').style.display = 'flex';
+  confetti({ particleCount: 50, spread: 70, origin: { y: 0.5 } });
+}
+
+function reshufflePickAllPairs() {
+  const seated = currentSeats.filter(Boolean);
+  if (seated.length === 0) return;
+  _pickAllPairsResult = _buildPairs(seated.map(s => s.name), lastPickGroupSize);
+  _renderPickAllPairs();
+  confetti({ particleCount: 30, spread: 55, origin: { y: 0.5 } });
+}
+
+function closePickAllPairs() {
+  document.getElementById('pickAllPairsOverlay').style.display = 'none';
+}
+
+function _buildPairs(names, groupSize) {
+  groupSize = Math.max(1, groupSize || 2);
+  const arr = [...names];
+  shuffle(arr);
+  const pairs = [];
+  for (let i = 0; i < arr.length; i += groupSize) {
+    pairs.push(arr.slice(i, i + groupSize));
+  }
+  return pairs;
+}
+
+function _renderPickAllPairs() {
+  const body = document.getElementById('pickAllPairsBody');
+  if (!body) return;
+  const total = _pickAllPairsResult.reduce((s, p) => s + p.length, 0);
+  const pairs = _pickAllPairsResult.length;
+  const mainSize = pairs > 0 ? _pickAllPairsResult[0].length : 0;
+
+  /* row 하나를 HTML로 변환하는 헬퍼 */
+  const rowHTML = (pair, idx) => `
+    <div class="pick-pair-row">
+      <span class="pick-pair-num">${idx + 1}</span>
+      <div class="pick-pair-names">
+        ${pair.map(name => `<span class="pick-pair-chip">${name}</span>`).join(
+          '<span class="pick-pair-dash">—</span>'
+        )}
+      </div>
+      ${pair.length !== mainSize ? `<span class="pick-pair-tag3">${pair.length}인조</span>` : ''}
+    </div>`;
+
+  /* [6-F.2] groupSize===1 일 때: 2열 구조 (좌 1~half / 우 half+1~end) */
+  const summary = `<div class="pick-pairs-summary">${total}명 → ${pairs}조 (${lastPickGroupSize}인 기준)</div>`;
+
+  if (lastPickGroupSize === 1 && pairs > 1) {
+    const half = Math.ceil(pairs / 2);
+    const leftList  = _pickAllPairsResult.slice(0, half);
+    const rightList = _pickAllPairsResult.slice(half);
+    body.innerHTML = summary + `
+      <div class="pick-pairs-2col">
+        <div class="pick-pairs-col">${leftList.map( (p, i) => rowHTML(p, i)).join('')}</div>
+        <div class="pick-pairs-col">${rightList.map((p, i) => rowHTML(p, i + half)).join('')}</div>
+      </div>`;
+  } else {
+    /* groupSize > 1: 기존 1열 구조 유지 */
+    body.innerHTML = summary + `
+      <div class="pick-pairs-list">
+        ${_pickAllPairsResult.map((pair, idx) => rowHTML(pair, idx)).join('')}
+      </div>`;
+  }
+}
+
+/* ══════════════════════════════════
    [15~20] 타이머
    activeTimerPanel: 현재 제어 중인 패널 ID
    'timerPanel'      = 다했어요 전용
@@ -2029,16 +2457,27 @@ function _renderTimer(panelId) {
 }
 
 function _onTimerEnd(panelId) {
+  /* [6-B] 솔(784Hz) → 미(659Hz) → 도(523Hz) 3회 순차 재생 */
   try {
-    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    gain.gain.setValueAtTime(0.6, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 1.2);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [
+      { freq: 784, start: 0.0  },  // 솔
+      { freq: 659, start: 0.55 },  // 미
+      { freq: 523, start: 1.1  },  // 도
+    ];
+    notes.forEach(({ freq, start }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + 0.5);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime  + start + 0.5);
+    });
   } catch(e) {}
   _renderTimer(panelId);
 }
@@ -2092,6 +2531,199 @@ function timerRender() { _renderTimer('timerPanel'); }
 function timerOnEnd()  { _onTimerEnd('timerPanel'); }
 
 /* ══════════════════════════════════
+   [6-A] 성별 배치 시스템
+══════════════════════════════════ */
+
+/* 확장 패널 열기/닫기 */
+function toggleGenderPanel() {
+  genderPanelOpen = !genderPanelOpen;
+  const panel = document.getElementById('genderPanel');
+  const icon  = document.getElementById('genderExpandIcon');
+  const shuffleBtn = document.getElementById('btnShuffle');
+  if (!panel || !icon) return;
+
+  if (genderPanelOpen) {
+    panel.classList.remove('hidden');
+    icon.textContent = '◂';
+    if (shuffleBtn) {
+      shuffleBtn.classList.remove('rounded-l-xl');
+      shuffleBtn.classList.add('rounded-l-xl');
+    }
+  } else {
+    panel.classList.add('hidden');
+    icon.textContent = '▸';
+    /* 패널 닫을 때 성별 지정 모드도 종료 */
+    if (genderZoneMode) _exitGenderZoneMode();
+  }
+  _updateGenderButtons();
+}
+
+/* 남여 자리지정 모드 토글 */
+function toggleGenderZoneMode() {
+  genderZoneMode = !genderZoneMode;
+  if (genderZoneMode) {
+    _enterGenderZoneMode();
+  } else {
+    _exitGenderZoneMode();
+  }
+}
+
+function _enterGenderZoneMode() {
+  genderZoneMode = true;
+  /* [6-B.1] 진입 직전 groupViewOn 상태 저장 후 자동 OFF — 성별 테두리가 보이도록 */
+  _groupViewBeforeZone = groupViewOn;
+  if (groupViewOn) {
+    groupViewOn = false;
+    updateGroupViewButton();
+    renderGrid();
+  }
+  document.body.classList.add('gender-zone-mode');
+  _updateGenderButtons();
+  _renderGenderZoneBar();
+}
+
+function _exitGenderZoneMode() {
+  genderZoneMode = false;
+  document.body.classList.remove('gender-zone-mode');
+  /* [6-B.1] 진입 직전 저장된 groupViewOn 상태 복원 */
+  if (_groupViewBeforeZone !== null) {
+    groupViewOn = _groupViewBeforeZone;
+    _groupViewBeforeZone = null;
+    updateGroupViewButton();
+    renderGrid();
+  }
+  _updateGenderButtons();
+  _removeGenderZoneBar();
+}
+
+/* 같은 성별끼리 앉기 ON/OFF */
+function toggleSameGender() {
+  sameGenderOn = !sameGenderOn;
+  localStorage.setItem('seat_same_gender', JSON.stringify(sameGenderOn));
+  _updateGenderButtons();
+}
+
+/* 버튼 상태 업데이트 */
+function _updateGenderButtons() {
+  const zoneBtn  = document.getElementById('btnGenderZone');
+  const sameBtn  = document.getElementById('btnSameGender');
+  const badge    = document.getElementById('genderActiveBadge');
+
+  if (zoneBtn) {
+    if (genderZoneMode) {
+      zoneBtn.classList.add('active-mode');
+      zoneBtn.innerHTML = '<span class="text-base leading-none">🗺️</span><span class="text-xs mt-0.5 leading-tight text-center">지정<br>종료</span>';
+    } else {
+      zoneBtn.classList.remove('active-mode');
+      zoneBtn.innerHTML = '<span class="text-base leading-none">🗺️</span><span class="text-xs mt-0.5 leading-tight text-center">남여<br>자리지정</span>';
+    }
+  }
+
+  if (sameBtn) {
+    if (sameGenderOn) {
+      sameBtn.classList.add('same-on');
+      sameBtn.innerHTML = '<span class="text-base leading-none">👫</span><span class="text-xs mt-0.5 leading-tight text-center">같은성별<br>앉기ON</span>';
+    } else {
+      sameBtn.classList.remove('same-on');
+      sameBtn.innerHTML = '<span class="text-base leading-none">👫</span><span class="text-xs mt-0.5 leading-tight text-center">같은성별<br>앉기OFF</span>';
+    }
+  }
+
+  /* [UI통합] 확장 버튼 뱃지: sameGenderOn=true일 때 초록 점 표시 */
+  if (badge) badge.classList.toggle('hidden', !sameGenderOn);
+
+  _updateStatusBadges();
+}
+
+/* 성별 지정 모드 브러시 바 렌더링 */
+function _renderGenderZoneBar() {
+  /* 기존 바 제거 */
+  _removeGenderZoneBar();
+
+  const mCount = students.filter(s => s.gender === 'M').length;
+  const fCount = students.filter(s => s.gender === 'F').length;
+  const mZones = genderZones.filter((z, i) => z === 'M' && gridEnabled[i]).length;
+  const fZones = genderZones.filter((z, i) => z === 'F' && gridEnabled[i]).length;
+
+  const mWarn = mZones > mCount;
+  const fWarn = fZones > fCount;
+
+  const bar = document.createElement('div');
+  bar.id = 'genderZoneBar';
+  bar.className = 'gender-brush-bar';
+  bar.innerHTML = `
+    <span class="gender-count-info">
+      <span class="male-count">남 ${mCount}명</span> /
+      <span class="female-count">여 ${fCount}명</span>
+    </span>
+    <button id="brushM" class="gender-brush-btn male ${genderBrush === 'M' ? 'active' : ''}"
+      onclick="setGenderBrush('M')">🔵 남학생</button>
+    <button id="brushF" class="gender-brush-btn female ${genderBrush === 'F' ? 'active' : ''}"
+      onclick="setGenderBrush('F')">🔴 여학생</button>
+    <button id="brushE" class="gender-brush-btn erase ${genderBrush === '' ? 'active' : ''}"
+      onclick="setGenderBrush('')">✕ 지우개</button>
+    <span class="gender-count-info">
+      지정:
+      <span class="male-count">${mZones}칸</span> /
+      <span class="female-count">${fZones}칸</span>
+    </span>
+    ${mWarn ? `<span class="gender-over-warn">⚠️ 남학생 자리 초과</span>` : ''}
+    ${fWarn ? `<span class="gender-over-warn">⚠️ 여학생 자리 초과</span>` : ''}
+    <button onclick="clearAllGenderZones()"
+      style="padding:3px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">
+      전체해제
+    </button>`;
+
+  /* 메인 버튼 행 뒤에 삽입 */
+  const btnRow = document.querySelector('.main-btn-row');
+  if (btnRow && btnRow.parentNode) {
+    btnRow.parentNode.insertBefore(bar, btnRow.nextSibling);
+  }
+}
+
+function _removeGenderZoneBar() {
+  const existing = document.getElementById('genderZoneBar');
+  if (existing) existing.remove();
+}
+
+function setGenderBrush(brush) {
+  genderBrush = brush;
+  _renderGenderZoneBar();
+}
+
+function clearAllGenderZones() {
+  if (!confirm('모든 성별 자리 지정을 해제하시겠습니까?')) return;
+  genderZones = Array(40).fill('');
+  saveSettingsToStorage();
+  _renderGenderZoneBar();
+  renderGrid();
+}
+
+/* ══════════════════════════════════
+   [UI통합] 칠판 상태 뱃지 업데이트
+   활성 기능(모둠보기 / 1인1역 / 성별같이앉기)을 칠판 우측에 표시
+══════════════════════════════════ */
+function _updateStatusBadges() {
+  /* [v6-G] 상태뱃지: 클릭하면 OFF만 가능 (단방향 disable) */
+  const area = document.getElementById('statusBadgeArea');
+  if (!area) return;
+  area.innerHTML = '';
+  const _badge = (label, offFn) => {
+    const b = document.createElement('span');
+    b.className   = 'status-badge status-badge-dismissible';
+    b.innerHTML   = label + ' <span class="status-badge-x">✕</span>';
+    b.querySelector('.status-badge-x').onclick = (e) => {
+      e.stopPropagation();
+      offFn();
+    };
+    area.appendChild(b);
+  };
+  if (groupViewOn)  _badge('모둠보기',       () => { groupViewOn  = false; updateGroupViewButton(); renderGrid(); });
+  if (roleViewOn)   _badge('1인1역',          () => { roleViewOn   = false; localStorage.setItem('seat_role_view_on', 'false'); updateRoleViewButton(); renderGrid(); });
+  if (sameGenderOn) _badge('성별같이앉기',   () => { sameGenderOn = false; localStorage.setItem('seat_same_gender', 'false'); _updateGenderButtons(); });
+}
+
+/* ══════════════════════════════════
    초기화
 ══════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', () => {
@@ -2100,4 +2732,186 @@ window.addEventListener('DOMContentLoaded', () => {
   showTab('roster');
   updateGroupViewButton();
   updateRoleViewButton();
+  /* [6-A] 성별 버튼 초기 상태 반영 */
+  _updateGenderButtons();
+  /* [UI통합] 칠판 상태 뱃지 초기 반영 */
+  _updateStatusBadges();
+  /* [v6-G] 방문자 카운트 (콘솔 확인용) */
+  try {
+    const vc = localStorage.getItem('seat_visitor_count') || '1';
+    console.log('[Classton] 누적 방문: ' + vc + '회');
+  } catch(e) {}
 });
+
+/* ══════════════════════════════════════════
+   [v6-G] 매뉴얼 모달 시스템
+══════════════════════════════════════════ */
+const _MANUAL_DATA = [
+  { title: '📢 뽑기 메뉴', desc: '학생을 무작위로 뽑습니다. 개인/모둠/남녀 구분 뽑기가 가능합니다.' },
+  { title: '🎲 자리바꾸기', desc: '전체 자리를 무작위로 섞습니다. 고정 자리는 제외됩니다.' },
+  { title: '👤 다했어요 (개인)', desc: '과제를 완료한 학생을 체크합니다. 모두 완료 시 알림이 표시됩니다.' },
+  { title: '👥 다했어요 (모둠)', desc: '모둠 단위로 완료를 체크합니다.' },
+  { title: '👁 모둠보기', desc: '자리 배치를 모둠 색상으로 구분하여 표시합니다.' },
+  { title: '🏷 1인1역', desc: '각 학생의 역할 태그를 자리에 표시합니다.' },
+  { title: '⏱ 타이머', desc: '화면 상단에 자유 타이머를 표시합니다.' },
+  { title: '⚙️ 설정', desc: '명단 관리, 모둠 구성, 기록, 보안 설정을 포함한 전체 설정 패널을 엽니다.' },
+];
+function openManualModal() {
+  /* [v6-H] 아코디언 UX — 클릭 시 상세 설명 펼침 */
+  const el = document.getElementById('manualModal');
+  if (!el) return;
+  el.style.display = 'flex';
+  const list = document.getElementById('manualList');
+  if (!list) return;
+  list.innerHTML = _MANUAL_DATA.map((item, i) => `
+    <div style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;overflow:hidden;">
+      <button onclick="_toggleManualItem(${i})"
+        style="width:100%;display:flex;justify-content:space-between;align-items:center;
+               padding:9px 12px;background:#f8fafc;border:none;cursor:pointer;text-align:left;">
+        <span style="font-weight:700;font-size:13px;">${item.title}</span>
+        <span id="manualArrow${i}" style="font-size:11px;color:#94a3b8;transition:transform 0.2s;">▼</span>
+      </button>
+      <div id="manualDetail${i}"
+        style="display:none;padding:8px 12px 10px;font-size:12px;color:#475569;line-height:1.6;background:#fff;">
+        ${item.desc}${item.detail ? '<br><br><span style=\'color:#64748b;\'>'+item.detail+'</span>' : ''}
+      </div>
+    </div>`).join('');
+}
+
+function _toggleManualItem(i) {
+  const detail = document.getElementById('manualDetail' + i);
+  const arrow  = document.getElementById('manualArrow' + i);
+  if (!detail) return;
+  const open = detail.style.display === 'block';
+  detail.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▼' : '▲';
+}
+function closeManualModal() {
+  const el = document.getElementById('manualModal');
+  if (el) el.style.display = 'none';
+}
+
+/* ══════════════════════════════════════════
+   [v6-I] Google Sheets 피드백 시스템
+   ─────────────────────────────────────────
+   배포 전 필수: _SHEETS_ENDPOINT 를 실제
+   Google Apps Script 배포 URL로 교체하세요.
+   Apps Script 코드: 이 블록 끝 주석 참고
+══════════════════════════════════════════ */
+const _SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzlbt-KXjx3kQ--JYp_VDpTvREGTIkazr_BXjOAMLrAs8vLPVn2k6FnFlaKo9mxXhwrCA/exec';
+
+const _FB_TYPES = {
+  bug:     { label: '🐛 버그 신고',  color: '#b91c1c', bg: '#fee2e2', border: '#fca5a5' },
+  feature: { label: '🚀 기능 요청', color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
+  etc:     { label: '💬 기타 의견', color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+};
+let _currentFbType = 'bug';
+
+/* renderSettings에서 호출 — 피드백 UI + 방문자 카운트 렌더 */
+function renderSheetsFeedback(container) {
+  const vc = parseInt(localStorage.getItem('seat_visitor_count') || '0');
+  container.innerHTML = `
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;">
+        누적 방문자: <strong style="color:#64748b;">${vc}회</strong>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;background:#f8fafc;">
+        <div style="font-weight:800;font-size:13px;color:#1e293b;margin-bottom:10px;">📬 피드백 보내기</div>
+
+        <div style="display:flex;gap:6px;margin-bottom:10px;" id="fbTypeBtns">
+          <button onclick="selectFeedbackType('bug')" id="fbBtn_bug"
+            style="flex:1;padding:6px 2px;font-size:11px;font-weight:700;background:#fee2e2;color:#b91c1c;border:2px solid #fca5a5;border-radius:6px;cursor:pointer;">
+            🐛 버그 신고
+          </button>
+          <button onclick="selectFeedbackType('feature')" id="fbBtn_feature"
+            style="flex:1;padding:6px 2px;font-size:11px;font-weight:700;background:#dbeafe;color:#1d4ed8;border:2px solid #93c5fd;border-radius:6px;cursor:pointer;">
+            🚀 기능 요청
+          </button>
+          <button onclick="selectFeedbackType('etc')" id="fbBtn_etc"
+            style="flex:1;padding:6px 2px;font-size:11px;font-weight:700;background:#f0fdf4;color:#15803d;border:2px solid #86efac;border-radius:6px;cursor:pointer;">
+            💬 기타 의견
+          </button>
+        </div>
+
+        <div id="fbTypeLabel" style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px;min-height:16px;"></div>
+
+        <input id="fbTitle" type="text" placeholder="제목을 입력하세요"
+          style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;font-size:12px;margin-bottom:6px;">
+
+        <textarea id="fbMessage" rows="4" placeholder="내용을 입력하세요"
+          style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;font-size:12px;resize:vertical;margin-bottom:6px;"></textarea>
+
+        <button onclick="submitSheetsFeedback()"
+          style="width:100%;padding:8px;font-size:12px;font-weight:700;background:#1e293b;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+          전송하기
+        </button>
+        <div id="fbStatus" style="font-size:11px;text-align:center;margin-top:6px;min-height:16px;color:#64748b;"></div>
+      </div>
+    </div>`;
+  selectFeedbackType('bug');
+}
+
+function selectFeedbackType(type) {
+  _currentFbType = type;
+  ['bug','feature','etc'].forEach(t => {
+    const btn = document.getElementById('fbBtn_' + t);
+    if (!btn) return;
+    btn.style.borderWidth = (t === type) ? '3px' : '2px';
+    btn.style.opacity     = (t === type) ? '1'   : '0.6';
+  });
+  const lbl = document.getElementById('fbTypeLabel');
+  if (lbl) lbl.textContent = (_FB_TYPES[type]?.label || '') + ' 선택됨';
+}
+
+function submitSheetsFeedback() {
+  const title   = (document.getElementById('fbTitle')?.value   || '').trim();
+  const message = (document.getElementById('fbMessage')?.value || '').trim();
+  const status  = document.getElementById('fbStatus');
+  const setStatus = (msg, color) => { if (status) { status.textContent = msg; status.style.color = color; } };
+
+  if (!title)   { setStatus('⚠️ 제목을 입력해 주세요.',   '#ef4444'); return; }
+  if (!message) { setStatus('⚠️ 내용을 입력해 주세요.',   '#ef4444'); return; }
+
+  setStatus('전송 중...', '#64748b');
+
+  fetch(_SHEETS_ENDPOINT, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ type: _currentFbType, title, message, timestamp: Date.now(), version: 'v6-I' }),
+  })
+  .then(r => r.json())
+  .then(() => {
+    setStatus('✅ 전송 완료! 소중한 의견 감사합니다.', '#16a34a');
+    document.getElementById('fbTitle').value   = '';
+    document.getElementById('fbMessage').value = '';
+    selectFeedbackType('bug');
+  })
+  .catch(err => {
+    setStatus('❌ 전송 실패. 네트워크를 확인해 주세요.', '#ef4444');
+    console.error('[Classton] 피드백 전송 오류:', err);
+  });
+}
+
+/* ──────────────────────────────────────────
+   Google Apps Script 배포 코드 (참고)
+   1. https://script.google.com 에서 새 프로젝트 생성
+   2. 아래 코드를 붙여넣기
+   3. 배포 → 웹 앱 → 모든 사용자 액세스
+   4. 배포 URL을 _SHEETS_ENDPOINT 에 입력
+
+   function doPost(e) {
+     try {
+       const d = JSON.parse(e.postData.contents);
+       SpreadsheetApp.getActiveSpreadsheet()
+         .getActiveSheet()
+         .appendRow([new Date(d.timestamp), d.type, d.title, d.message]);
+       return ContentService
+         .createTextOutput(JSON.stringify({result:'success'}))
+         .setMimeType(ContentService.MimeType.JSON);
+     } catch(err) {
+       return ContentService
+         .createTextOutput(JSON.stringify({result:'error',message:err.toString()}))
+         .setMimeType(ContentService.MimeType.JSON);
+     }
+   }
+────────────────────────────────────────── */

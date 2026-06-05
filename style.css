@@ -463,23 +463,43 @@ body {
 
 /* 시간 추가 버튼 행 [16] */
 .timer-add-row {
-  display: flex;
-  gap:     8px;
+  display:   flex;
+  flex-wrap: wrap;       /* [6-B] 5버튼 줄바꿈 허용 */
+  gap:       6px;
+  justify-content: center;
 }
 .timer-add-btn {
-  padding:       6px 14px;
+  padding:       5px 10px;   /* [6-B] 5버튼 수용을 위해 패딩 소폭 축소 */
   background:    #e0f2fe;
   color:         #0369a1;
   border:        none;
   border-radius: 20px;
-  font-size:     13px;
+  font-size:     12px;       /* [6-B] 13→12px */
   font-weight:   700;
   cursor:        pointer;
   transition:    background 0.15s, transform 0.1s;
   font-family:   'Noto Sans KR', sans-serif;
+  white-space:   nowrap;
 }
 .timer-add-btn:hover  { background: #bae6fd; }
 .timer-add-btn:active { transform: scale(0.95); }
+
+/* [6-B] 기록 목록 카드 삭제 버튼 */
+.history-card-del-btn {
+  background:    none;
+  border:        none;
+  font-size:     14px;
+  cursor:        pointer;
+  padding:       2px 4px;
+  border-radius: 6px;
+  opacity:       0.45;
+  transition:    opacity 0.15s, background 0.15s;
+  line-height:   1;
+}
+.history-card-del-btn:hover {
+  opacity:    1;
+  background: #fee2e2;
+}
 
 /* 제어 버튼 행 [17] */
 .timer-ctrl-row {
@@ -620,7 +640,7 @@ body {
 /* 명단 탭 - 역할 태그 */
 .role-tag {
   display:       inline-block;
-  margin-left:   4px;
+  margin-left:   0;
   padding:       1px 6px;
   background:    #ede9fe;
   color:         #6d28d9;
@@ -1123,4 +1143,391 @@ body {
   button, .tab-btn, #sidebar, #moreMenuDropdown, .timer-panel {
     display: none !important;
   }
+}
+
+/* ═══════════════════════════════════
+   [6-A] 성별 배치 확장 패널
+═══════════════════════════════════ */
+
+/* 확장 패널 컨테이너 */
+.gender-panel {
+  display:         flex;
+  align-items:     stretch;
+  gap:             6px;
+}
+
+/* 성별 패널 버튼 공통 */
+.gender-panel-btn {
+  min-width:       62px;
+  height:          56px;
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  border:          none;
+  border-radius:   12px;
+  font-weight:     800;
+  cursor:          pointer;
+  transition:      background 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow:      0 2px 8px rgba(0,0,0,0.10);
+  font-family:     'Noto Sans KR', sans-serif;
+  padding:         0 8px;
+}
+.gender-panel-btn:active { transform: scale(0.95); }
+
+/* 남여 자리지정 버튼 */
+.gender-panel-btn-zone {
+  background: #818cf8;
+  color:      white;
+}
+.gender-panel-btn-zone:hover     { background: #6366f1; }
+.gender-panel-btn-zone.active-mode {
+  background: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.3);
+}
+
+/* 성별같이앉기 버튼 */
+.gender-panel-btn-same {
+  background: #fca5a5;   /* 톤다운 붉은 계열 — OFF */
+  color:      white;
+}
+.gender-panel-btn-same:hover      { background: #f87171; }
+.gender-panel-btn-same.same-on {
+  background: #22c55e !important;  /* 밝은 초록 — ON */
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.35);
+}
+
+/* 자리 초기화 버튼 (성별 패널 내) */
+.gender-panel-btn-reset {
+  background: #94a3b8;   /* 중립 회색 */
+  color:      white;
+}
+.gender-panel-btn-reset:hover { background: #64748b; }
+
+
+.gender-brush-bar {
+  display:         flex;
+  align-items:     center;
+  gap:             6px;
+  padding:         6px 10px;
+  background:      #f8fafc;
+  border:          1.5px solid #e2e8f0;
+  border-radius:   12px;
+  font-size:       12px;
+  font-weight:     700;
+  flex-shrink:     0;
+  white-space:     nowrap;
+}
+.gender-brush-btn {
+  padding:       5px 12px;
+  border:        2px solid transparent;
+  border-radius: 8px;
+  font-size:     12px;
+  font-weight:   800;
+  cursor:        pointer;
+  transition:    all 0.15s;
+  font-family:   'Noto Sans KR', sans-serif;
+}
+.gender-brush-btn.male {
+  background:   #dbeafe;
+  color:        #1d4ed8;
+  border-color: #dbeafe;
+}
+.gender-brush-btn.male.active {
+  background:   #3b82f6;
+  color:        white;
+  border-color: #2563eb;
+  box-shadow:   0 0 0 2px rgba(59,130,246,0.4);
+}
+.gender-brush-btn.female {
+  background:   #fce7f3;
+  color:        #be185d;
+  border-color: #fce7f3;
+}
+.gender-brush-btn.female.active {
+  background:   #ec4899;
+  color:        white;
+  border-color: #db2777;
+  box-shadow:   0 0 0 2px rgba(236,72,153,0.4);
+}
+.gender-brush-btn.erase {
+  background:   #f1f5f9;
+  color:        #64748b;
+  border-color: #f1f5f9;
+}
+.gender-brush-btn.erase.active {
+  background:   #64748b;
+  color:        white;
+  border-color: #475569;
+}
+
+/* 성별 카운터 표시 */
+.gender-count-info {
+  font-size:   11px;
+  color:       #64748b;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.gender-count-info .male-count   { color: #2563eb; }
+.gender-count-info .female-count { color: #db2777; }
+
+/* 초과 경고 */
+.gender-over-warn {
+  font-size:     11px;
+  font-weight:   800;
+  color:         #dc2626;
+  background:    #fee2e2;
+  border:        1px solid #fca5a5;
+  border-radius: 8px;
+  padding:       3px 8px;
+  white-space:   nowrap;
+  animation:     warnPulse 0.8s ease infinite alternate;
+}
+@keyframes warnPulse {
+  from { opacity: 1; }
+  to   { opacity: 0.65; }
+}
+
+/* ─── 자리 그리드 — 성별존 테두리 ─── */
+/* 남학생존: 파란 테두리 (성별 기능 활성 시에만 renderGrid에서 인라인으로 적용) */
+/* 여학생존: 분홍 테두리 */
+/* CSS 클래스는 renderGrid에서 직접 인라인 스타일로 적용하므로 여기선 참고용 */
+
+/* 성별 지정 모드 중 커서 변경 */
+body.gender-zone-mode #grid .grid-cell {
+  cursor: crosshair !important;
+}
+
+/* ═══════════════════════════════════
+   UI 통합 개선 — 토글 스위치 & 상태 뱃지
+═══════════════════════════════════ */
+
+/* ─── 더보기 드롭다운 — 토글 행 ─── */
+.view-toggle-row {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         10px 16px;
+  cursor:          pointer;
+  transition:      background 0.12s;
+  user-select:     none;
+}
+.view-toggle-row:hover { background: #f8fafc; }
+
+.view-toggle-label {
+  font-size:   13px;
+  font-weight: 700;
+  color:       #334155;
+}
+
+/* 토글 스위치 컨테이너 */
+.view-toggle-switch {
+  position:         relative;
+  width:            44px;
+  height:           22px;
+  background:       #cbd5e1;   /* OFF 색상 */
+  border-radius:    11px;
+  transition:       background 0.2s ease;
+  flex-shrink:      0;
+}
+.view-toggle-switch.active {
+  background: #6366f1;         /* ON 색상 — 인디고 계열 */
+}
+
+/* 토글 thumb */
+.view-toggle-thumb {
+  position:      absolute;
+  top:           3px;
+  left:          3px;
+  width:         16px;
+  height:        16px;
+  background:    white;
+  border-radius: 50%;
+  box-shadow:    0 1px 3px rgba(0,0,0,0.25);
+  transition:    left 0.2s ease;
+}
+.view-toggle-switch.active .view-toggle-thumb {
+  left: 25px;  /* 44 - 16 - 3 */
+}
+
+/* ─── 확장 버튼 — 성별 같이 앉기 ON 뱃지 ─── */
+.gender-active-badge {
+  position:      absolute;
+  top:           4px;
+  right:         4px;
+  width:         8px;
+  height:        8px;
+  background:    #22c55e;    /* 초록 */
+  border-radius: 50%;
+  border:        2px solid white;
+  pointer-events:none;
+}
+.gender-active-badge.hidden { display: none; }
+
+/* ─── 칠판 — 상태 뱃지 영역 ─── */
+.status-badge-area {
+  position:    absolute;
+  right:       12px;
+  top:         50%;
+  transform:   translateY(-50%);
+  display:     flex;
+  gap:         6px;
+  align-items: center;
+}
+
+.status-badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           4px;
+  padding:       3px 8px;
+  background:    rgba(30,41,59,0.08);    /* 흰 배경 기준 — 어두운 반투명 */
+  border:        1px solid rgba(30,41,59,0.18);
+  border-radius: 20px;
+  font-size:     11px;
+  font-weight:   700;
+  color:         #1e293b;               /* slate-800 */
+  white-space:   nowrap;
+}
+
+/* [v6-G] 상태뱃지 dismiss 버튼 */
+.status-badge-dismissible {
+  cursor: default;
+}
+.status-badge-x {
+  display:       inline-flex;
+  align-items:   center;
+  justify-content: center;
+  width:         14px;
+  height:        14px;
+  border-radius: 50%;
+  background:    rgba(30,41,59,0.15);
+  font-size:     9px;
+  cursor:        pointer;
+  margin-left:   2px;
+  transition:    background 0.15s;
+}
+.status-badge-x:hover {
+  background: rgba(239,68,68,0.25);
+  color:      #ef4444;
+}
+.status-badge::before {
+  content:       '';
+  display:       inline-block;
+  width:         7px;
+  height:        7px;
+  border-radius: 50%;
+  background:    #22c55e;   /* 초록 점 — 흰 배경에서도 선명 */
+  flex-shrink:   0;
+}
+
+/* ─── 칠판 — 클래스톤 로고 워터마크 ─── */
+.board-logo-watermark {
+  position:       absolute;
+  left:           14px;
+  top:            50%;
+  transform:      translateY(-50%);
+  height:         55px;
+  width:          auto;
+  opacity:        0.30;
+  pointer-events: none;   /* 클릭 이벤트 통과 */
+  user-select:    none;
+}
+
+/* ─── 칠판 — 설정 버튼 [6-F.4] ─── */
+.board-settings-btn {
+  position:    absolute;
+  right:       10px;
+  top:         50%;
+  transform:   translateY(-50%);
+}
+
+/* ═══════════════════════════════════
+   [6-E] 한번에 다 뽑기 결과 오버레이
+═══════════════════════════════════ */
+.pick-pairs-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 10000;
+  align-items: center; justify-content: center;
+}
+.pick-pairs-overlay[style*="flex"] { display: flex !important; }
+.pick-pairs-card {
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  width: min(480px, 92vw); min-height: 320px; max-height: 92vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pick-pairs-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 14px; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.pick-pairs-title { font-size: 17px; font-weight: 800; color: #1e293b; }
+.pick-pairs-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #f1f5f9; border: none; cursor: pointer;
+  font-size: 13px; color: #64748b; font-weight: 800; transition: background 0.12s;
+}
+.pick-pairs-close:hover { background: #e2e8f0; }
+.pick-pairs-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.pick-pairs-summary {
+  text-align: center; font-size: 12px; font-weight: 700; color: #6366f1;
+  background: #eef2ff; border-radius: 8px; padding: 6px 12px; margin-bottom: 14px;
+}
+.pick-pairs-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* [6-F.2] groupSize===1 전용 2열 레이아웃 */
+.pick-pairs-2col {
+  display:   grid;
+  grid-template-columns: 1fr 1fr;
+  gap:       0 12px;
+  align-items: start;
+}
+.pick-pairs-col { display: flex; flex-direction: column; gap: 6px; }
+.pick-pair-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #f8fafc;
+  border-radius: 12px; border: 1px solid #e2e8f0; transition: background 0.1s;
+}
+.pick-pair-row:hover { background: #f1f5f9; }
+.pick-pair-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #6366f1; color: white;
+  font-size: 12px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.pick-pair-names { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; }
+.pick-pair-chip {
+  background: #e0e7ff; color: #3730a3;
+  padding: 4px 10px; border-radius: 20px;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.pick-pair-dash { color: #94a3b8; font-weight: 700; font-size: 14px; }
+.pick-pair-tag3 {
+  font-size: 10px; font-weight: 700; color: #d97706;
+  background: #fef3c7; border: 1px solid #fde68a;
+  border-radius: 6px; padding: 2px 6px; flex-shrink: 0;
+}
+.pick-pairs-footer {
+  display: flex; gap: 8px; padding: 14px 20px;
+  border-top: 1px solid #e2e8f0; justify-content: flex-end; flex-shrink: 0;
+}
+.pick-pairs-btn-reshuffle {
+  padding: 8px 16px; background: #6366f1; color: white;
+  border: none; border-radius: 10px; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+}
+.pick-pairs-btn-reshuffle:hover { background: #4f46e5; }
+.pick-pairs-btn-close {
+  padding: 8px 16px; background: #f1f5f9; color: #475569;
+  border: none; border-radius: 10px; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+}
+.pick-pairs-btn-close:hover { background: #e2e8f0; }
+
+/* 프린트: 불필요 링크 제거 */
+@media print {
+  a[href]::after { content: none !important; }
+  .main-btn-row, .main-footer, #sidebar,
+  #timerPanel, #timerPanelFree,
+  #dahaesseoOverlay, #pickAllPairsOverlay { display: none !important; }
 }
